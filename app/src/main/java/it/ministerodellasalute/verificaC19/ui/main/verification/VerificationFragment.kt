@@ -20,9 +20,6 @@
 
 package it.ministerodellasalute.verificaC19.ui.main.verification
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.util.Log
@@ -38,11 +35,12 @@ import androidx.lifecycle.observe
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import dagger.hilt.android.AndroidEntryPoint
-import it.ministerodellasalute.verificaC19.*
+import it.ministerodellasalute.verificaC19.BuildConfig
+import it.ministerodellasalute.verificaC19.R
 import it.ministerodellasalute.verificaC19.databinding.FragmentVerificationBinding
-import it.ministerodellasalute.verificaC19.ui.FirstActivity
 import it.ministerodellasalute.verificaC19.ui.compounds.QuestionCompound
-import it.ministerodellasalute.verificaC19.ui.main.MainActivity
+import it.ministerodellasalute.verificaC19sdk.VerificaApplication
+import it.ministerodellasalute.verificaC19sdk.VerificaDrlVersionException
 import it.ministerodellasalute.verificaC19sdk.VerificaMinSDKVersionException
 import it.ministerodellasalute.verificaC19sdk.VerificaMinVersionException
 import it.ministerodellasalute.verificaC19sdk.model.CertificateSimple
@@ -77,6 +75,7 @@ class VerificationFragment : Fragment(), View.OnClickListener {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.closeButton.setOnClickListener(this)
+        viewModel.checkDrlInconsistent()
         viewModel.certificate.observe(viewLifecycleOwner) { certificate ->
             certificate?.let {
                 certificateModel = it
@@ -84,7 +83,8 @@ class VerificationFragment : Fragment(), View.OnClickListener {
                 setupCertStatusView(it)
                 setupTimeStamp(it)
                 if (viewModel.getTotemMode() && (certificate.certificateStatus == CertificateStatus.VALID
-                    || certificate.certificateStatus == CertificateStatus.PARTIALLY_VALID)) {
+                            || certificate.certificateStatus == CertificateStatus.PARTIALLY_VALID)
+                ) {
                     Handler().postDelayed({
                         activity?.onBackPressed()
                     }, 5000)
@@ -94,26 +94,29 @@ class VerificationFragment : Fragment(), View.OnClickListener {
         viewModel.inProgress.observe(viewLifecycleOwner) {
             binding.progressBar.isVisible = it
         }
-        try {
-            viewModel.init(args.qrCodeText, true)
+
+        viewModel.isDrlInconsistent.observe(viewLifecycleOwner) {
+            try {
+                viewModel.init(args.qrCodeText, true)
+            } catch (e: VerificaMinSDKVersionException) {
+                Log.d("VerificationFragment", "Min SDK Version Exception")
+                createForceUpdateDialog(getString(R.string.updateMessage))
+            } catch (e: VerificaMinVersionException) {
+                Log.d("VerificationFragment", "Min App Version Exception")
+                createForceUpdateDialog(getString(R.string.updateMessage))
+            } catch (e: VerificaDrlVersionException) {
+                Log.d("VerificationFragment", "Drl Version Exception")
+                createForceUpdateDialog(getString(R.string.messageDownloadStarted))
+            }
         }
-        catch (e: VerificaMinSDKVersionException)
-        {
-            Log.d("VerificationFragment", "Min SDK Version Exception")
-            createForceUpdateDialog()
-        }
-        catch (e: VerificaMinVersionException)
-        {
-            Log.d("VerificationFragment", "Min App Version Exception")
-            createForceUpdateDialog()
-        }
+
 
     }
 
     private fun setupCertStatusView(cert: CertificateSimple) {
         //val certStatus = viewModel.getCertificateStatus(cert)
         val certStatus = cert.certificateStatus
-        if (certStatus !=null) {
+        if (certStatus != null) {
             setBackgroundColor(certStatus)
             setPersonDetailsVisibility(certStatus)
             setValidationIcon(certStatus)
@@ -130,7 +133,7 @@ class VerificationFragment : Fragment(), View.OnClickListener {
                 FORMATTED_VALIDATION_DATE
             )
         )
-        binding.validationDate.visibility =View.VISIBLE
+        binding.validationDate.visibility = View.VISIBLE
     }
 
     private fun setLinkViews(certStatus: CertificateStatus) {
@@ -169,7 +172,13 @@ class VerificationFragment : Fragment(), View.OnClickListener {
             CertificateStatus.VALID -> getString(R.string.certificateValid)
             CertificateStatus.PARTIALLY_VALID -> getString(R.string.certificatePartiallyValid)
             CertificateStatus.NOT_EU_DCC -> getString(R.string.certificateNotDCC)
-            CertificateStatus.NOT_VALID -> getString(R.string.certificateNonValid)
+            CertificateStatus.NOT_VALID -> {
+                if (VerificaApplication.isCertificateRevoked && BuildConfig.DEBUG) {
+                    getString(R.string.certificateRevoked)
+                } else {
+                    getString(R.string.certificateNonValid)
+                }
+            }
             CertificateStatus.NOT_VALID_YET -> getString(R.string.certificateNonValidYet)
         }
     }
@@ -224,10 +233,10 @@ class VerificationFragment : Fragment(), View.OnClickListener {
         _binding = null
     }
 
-    private fun createForceUpdateDialog() {
+    private fun createForceUpdateDialog(message: String) {
         val builder = this.activity?.let { AlertDialog.Builder(requireContext()) }
         builder!!.setTitle(getString(R.string.updateTitle))
-        builder!!.setMessage(getString(R.string.updateMessage))
+        builder!!.setMessage(message)
         builder.setPositiveButton(getString(R.string.ok)) { dialog, which ->
             findNavController().popBackStack()
         }
