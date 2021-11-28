@@ -54,7 +54,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toEndOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/validation_date"
-            tools:text="Modalità Scansione" />
+            tools:text="ModalitÃ  Scansione" />
 
         <ScrollView
             android:id="@+id/scrollView3"
