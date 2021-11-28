@@ -70,6 +70,7 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
 
     private val viewModel by viewModels<FirstViewModel>()
 
+    private lateinit var sharedPreference: SharedPreferences
     private val verificaApplication = VerificaApplication()
 
     private val requestPermissionLauncher =
@@ -179,6 +180,7 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
     private fun setOnClickListeners() {
         binding.qrButton.setOnClickListener(this)
         binding.settings.setOnClickListener(this)
+        binding.scanModeButton.setOnClickListener(this)
         binding.privacyPolicyCard.setOnClickListener {
             val browserIntent =
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://www.dgc.gov.it/web/pn.html"))
@@ -189,6 +191,9 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://www.dgc.gov.it/web/faq.html"))
             startActivity(browserIntent)
         }
+
+        sharedPreference = getSharedPreferences("dgca.verifier.app.pref", Context.MODE_PRIVATE)
+
         binding.initDownload.setOnClickListener {
             if (Utility.isOnline(this)) {
                 startDownload()
@@ -327,6 +332,8 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
 
     override fun onResume() {
         super.onResume()
+        val chosenScanMode = if (sharedPreference.getString("scan_mode", "3G") == "3G") getString(R.string.scan_mode_3G) else getString(R.string.scan_mode_2G)
+        binding.scanModeButton.text = chosenScanMode
         viewModel.getAppMinVersion().let {
             if (Utility.versionCompare(
                     it,
@@ -343,8 +350,9 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         startActivity(intent)
     }
 
-    private fun openSettings() {
+    private fun openSettings(showScanModeChoiceAlertDialog: Boolean) {
         val intent = Intent(this, SettingsActivity::class.java)
+        intent.putExtra("showScanModeChoiceAlertDialog", showScanModeChoiceAlertDialog);
         startActivity(intent)
     }
 
@@ -369,7 +377,8 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         }
         when (v?.id) {
             R.id.qrButton -> checkCameraPermission()
-            R.id.settings -> openSettings()
+            R.id.settings -> openSettings(false)
+            R.id.scan_mode_button -> openSettings(true)
         }
     }
 

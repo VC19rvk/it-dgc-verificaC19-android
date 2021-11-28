@@ -112,10 +112,16 @@ class VerificationFragment : Fragment(), View.OnClickListener {
             setPersonDetailsVisibility(certStatus)
             setValidationIcon(certStatus)
             setValidationMainText(certStatus)
+            setScanModeText()
             setValidationSubTextVisibility(certStatus)
             setValidationSubText(certStatus)
             setLinkViews(certStatus)
         }
+    }
+
+    private fun setScanModeText() {
+        val chosenScanMode = if (viewModel.getScanMode() == "3G") getString(R.string.scan_mode_3G) else getString(R.string.scan_mode_2G)
+        binding.scanModeText.text = chosenScanMode
     }
 
     private fun setupTimeStamp(cert: CertificateSimple) {

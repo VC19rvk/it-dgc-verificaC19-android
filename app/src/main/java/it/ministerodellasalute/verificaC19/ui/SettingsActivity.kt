@@ -27,6 +27,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import it.ministerodellasalute.verificaC19.R
@@ -36,7 +37,7 @@ import it.ministerodellasalute.verificaC19sdk.model.VerificationViewModel
 @AndroidEntryPoint
 class SettingsActivity : AppCompatActivity(), View.OnClickListener {
 
-    lateinit var binding: ActivitySettingsBinding
+    private lateinit var binding: ActivitySettingsBinding
     private val viewModel by viewModels<VerificationViewModel>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,16 +46,34 @@ class SettingsActivity : AppCompatActivity(), View.OnClickListener {
         setContentView(binding.root)
 
         setSwitchesValue()
+        setTextViewsValue()
+        setLiveDataObservers()
 
         binding.backImage.setOnClickListener(this)
         binding.backText.setOnClickListener(this)
         binding.totemSwitch.setOnClickListener(this)
+        binding.scanButton.setOnClickListener(this)
         binding.faqCard.setOnClickListener(this)
         binding.privacyPolicyCard.setOnClickListener(this)
+
+        val showScanModeChoiceAlertDialog = this.intent.getBooleanExtra("showScanModeChoiceAlertDialog", false)
+        if (showScanModeChoiceAlertDialog) showScanModeChoiceAlertDialog()
     }
 
     private fun setSwitchesValue() {
         binding.totemSwitch.isChecked = viewModel.getTotemMode()
+    }
+
+    private fun setTextViewsValue() {
+        val chosenScanMode = if (viewModel.getScanMode() == "3G") getString(R.string.scan_mode_3G_short) else getString(R.string.scan_mode_2G_short)
+        binding.chosenScanText.text = chosenScanMode
+    }
+
+    private fun setLiveDataObservers() {
+        viewModel.scanMode.observe(this, {
+            val chosenScanMode = if (it == "3G") getString(R.string.scan_mode_3G_short) else getString(R.string.scan_mode_2G_short)
+            binding.chosenScanText.text = chosenScanMode
+        })
     }
 
     override fun onClick(v: View?) {
@@ -62,6 +81,8 @@ class SettingsActivity : AppCompatActivity(), View.OnClickListener {
             finish()
         } else if (v?.id == R.id.totem_switch) {
             viewModel.setTotemMode(binding.totemSwitch.isChecked)
+        }  else if (v?.id == R.id.scan_button) {
+            showScanModeChoiceAlertDialog()
         } else if (v?.id == R.id.faq_card) {
             val browserIntent =
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://www.dgc.gov.it/web/faq.html"))
@@ -71,5 +92,23 @@ class SettingsActivity : AppCompatActivity(), View.OnClickListener {
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://www.dgc.gov.it/web/pn.html"))
             startActivity(browserIntent)
         }
+    }
+
+    private fun showScanModeChoiceAlertDialog() {
+        val scanModeChoices = arrayOf(getString(R.string.scan_mode_2G), getString(R.string.scan_mode_3G))
+        val mBuilder = AlertDialog.Builder(this)
+        val chosenScanMode = if (viewModel.getScanMode() == "3G") 1 else 0
+
+        mBuilder.setTitle(getString(R.string.label_scan_mode))
+        mBuilder.setSingleChoiceItems(scanModeChoices, chosenScanMode) { dialog, which ->
+            if (which == 0) {
+                viewModel.setScanMode("2G")
+            } else if (which == 1) {
+                viewModel.setScanMode("3G")
+            }
+            dialog.dismiss()
+        }
+        val mDialog = mBuilder.create()
+        mDialog.show()
     }
 }
