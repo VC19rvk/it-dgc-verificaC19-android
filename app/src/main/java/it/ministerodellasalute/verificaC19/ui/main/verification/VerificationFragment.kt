@@ -44,6 +44,7 @@ import it.ministerodellasalute.verificaC19sdk.model.CertificateSimple
 import it.ministerodellasalute.verificaC19sdk.model.CertificateStatus
 import it.ministerodellasalute.verificaC19sdk.model.SimplePersonModel
 import it.ministerodellasalute.verificaC19sdk.model.VerificationViewModel
+import it.ministerodellasalute.verificaC19sdk.util.*
 import it.ministerodellasalute.verificaC19sdk.util.FORMATTED_BIRTHDAY_DATE
 import it.ministerodellasalute.verificaC19sdk.util.FORMATTED_VALIDATION_DATE
 import it.ministerodellasalute.verificaC19sdk.util.TimeUtility.parseFromTo
@@ -239,7 +240,8 @@ class VerificationFragment : Fragment(), View.OnClickListener {
             findNavController().popBackStack()
         }
         val dialog = builder.create()
-        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setCancelable(false)
         dialog.show()
     }
 
