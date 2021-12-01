@@ -47,9 +47,11 @@ import it.ministerodellasalute.verificaC19sdk.model.VerificationViewModel
 import it.ministerodellasalute.verificaC19sdk.util.*
 import it.ministerodellasalute.verificaC19sdk.util.FORMATTED_BIRTHDAY_DATE
 import it.ministerodellasalute.verificaC19sdk.util.FORMATTED_VALIDATION_DATE
+import it.ministerodellasalute.verificaC19sdk.util.TimeUtility.formatDateOfBirth
 import it.ministerodellasalute.verificaC19sdk.util.TimeUtility.parseFromTo
 import it.ministerodellasalute.verificaC19sdk.util.TimeUtility.parseTo
 import it.ministerodellasalute.verificaC19sdk.util.YEAR_MONTH_DAY
+import java.util.*
 
 @ExperimentalUnsignedTypes
 @AndroidEntryPoint
@@ -121,8 +123,13 @@ class VerificationFragment : Fragment(), View.OnClickListener {
     }
 
     private fun setScanModeText() {
-        val chosenScanMode = if (viewModel.getScanMode() == "3G") getString(R.string.scan_mode_3G) else getString(R.string.scan_mode_2G)
-        binding.scanModeText.text = chosenScanMode
+        val chosenScanMode = if (viewModel.getScanMode() == "3G") {
+            getString(R.string.scan_mode_3G_header).substringAfter(' ').toUpperCase(Locale.ROOT)
+        } else {
+            getString(R.string.scan_mode_2G_header).substringAfter(' ').toUpperCase(Locale.ROOT)
+        }
+        val scanModeLabel = getString(R.string.label_scan_mode_ver)
+        binding.scanModeText.text = getString(R.string.label_verification_scan_mode, scanModeLabel, chosenScanMode)
     }
 
     private fun setupTimeStamp(cert: CertificateSimple) {
@@ -217,8 +224,8 @@ class VerificationFragment : Fragment(), View.OnClickListener {
 
     private fun setPersonData(person: SimplePersonModel?, dateOfBirth: String?) {
         binding.nameStandardisedText.text = person?.familyName.plus(" ").plus(person?.givenName)
-        binding.birthdateText.text =
-            dateOfBirth?.parseFromTo(YEAR_MONTH_DAY, FORMATTED_BIRTHDAY_DATE) ?: ""
+
+        binding.birthdateText.text = dateOfBirth?.formatDateOfBirth() ?: ""
     }
 
     override fun onClick(v: View?) {
@@ -235,7 +242,7 @@ class VerificationFragment : Fragment(), View.OnClickListener {
     private fun createForceUpdateDialog(message: String) {
         val builder = this.activity?.let { AlertDialog.Builder(requireContext()) }
         builder!!.setTitle(getString(R.string.updateTitle))
-        builder!!.setMessage(message)
+        builder.setMessage(message)
         builder.setPositiveButton(getString(R.string.ok)) { dialog, which ->
             findNavController().popBackStack()
         }
