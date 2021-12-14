@@ -46,14 +46,18 @@ import androidx.core.text.bold
 import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.observe
+import com.google.gson.Gson
 import dagger.hilt.android.AndroidEntryPoint
 import it.ministerodellasalute.verificaC19.BuildConfig
 import it.ministerodellasalute.verificaC19.R
-import it.ministerodellasalute.verificaC19.VerificaApplication
+import it.ministerodellasalute.verificaC19.WhiteLabelApplication
 import it.ministerodellasalute.verificaC19.databinding.ActivityFirstBinding
+import it.ministerodellasalute.verificaC19.ui.base.doOnDebug
 import it.ministerodellasalute.verificaC19.ui.extensions.hide
 import it.ministerodellasalute.verificaC19.ui.extensions.show
+import it.ministerodellasalute.verificaC19.ui.main.Extras
 import it.ministerodellasalute.verificaC19.ui.main.MainActivity
+import it.ministerodellasalute.verificaC19sdk.VerificaSDKApplication
 import it.ministerodellasalute.verificaC19sdk.data.local.PrefKeys
 import it.ministerodellasalute.verificaC19sdk.data.local.Preferences
 import it.ministerodellasalute.verificaC19sdk.data.local.PreferencesImpl
@@ -75,9 +79,10 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
     private val viewModel by viewModels<FirstViewModel>()
 
     private lateinit var sharedPreference: SharedPreferences
-    private val verificaApplication = VerificaApplication()
 
     private lateinit var verificationViewModel: VerificationViewModel
+
+    private val whiteLabelApplication = WhiteLabelApplication()
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -103,6 +108,15 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         //observeSizeOverThreshold()
         //observeInitDownload()
         observeScanMode()
+        //doOnDebug {
+        //    observeDebugInfo()
+        //}
+    }
+
+    private fun observeDebugInfo() {
+        viewModel.debugInfoLiveData.observe(this) {
+            it?.let { binding.debugButton.show() }
+        }
     }
 
 //    private fun observeInitDownload() {
@@ -196,10 +210,12 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
     }
 
     private fun setSecureWindowFlags() {
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
+        if (!BuildConfig.DEBUG) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        }
     }
 
     private fun setOnClickListeners() {
@@ -230,6 +246,15 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
             } else {
                 createCheckConnectionAlertDialog()
             }
+        }
+
+        binding.debugButton.setOnClickListener {
+            val debugInfoIntent = Intent(this, DebugInfoActivity::class.java)
+            debugInfoIntent.putExtra(
+                Extras.DEBUG_INFO,
+                Gson().toJson(viewModel.debugInfoLiveData.value)
+            )
+            startActivity(debugInfoIntent)
         }
 
         binding.resumeDownload.setOnClickListener {
@@ -355,7 +380,7 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
     }
 
     private fun startSyncData() {
-        verificaApplication.setWorkManager()
+        whiteLabelApplication.setWorkManager()
     }
 
     private fun enableInitDownload() {
