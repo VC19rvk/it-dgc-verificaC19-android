@@ -30,7 +30,6 @@ import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
-import android.text.Html
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.method.LinkMovementMethod
@@ -47,10 +46,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.text.bold
-import androidx.core.text.htmlEncode
-import androidx.core.text.parseAsHtml
 import androidx.core.view.isVisible
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.observe
 import com.google.gson.Gson
 import dagger.hilt.android.AndroidEntryPoint
@@ -63,12 +59,9 @@ import it.ministerodellasalute.verificaC19.ui.extensions.hide
 import it.ministerodellasalute.verificaC19.ui.extensions.show
 import it.ministerodellasalute.verificaC19.ui.main.Extras
 import it.ministerodellasalute.verificaC19.ui.main.MainActivity
-import it.ministerodellasalute.verificaC19sdk.VerificaSDKApplication
+import it.ministerodellasalute.verificaC19sdk.data.local.ScanMode
 import it.ministerodellasalute.verificaC19sdk.data.local.PrefKeys
-import it.ministerodellasalute.verificaC19sdk.data.local.Preferences
-import it.ministerodellasalute.verificaC19sdk.data.local.PreferencesImpl
 import it.ministerodellasalute.verificaC19sdk.model.FirstViewModel
-import it.ministerodellasalute.verificaC19sdk.model.VerificationViewModel
 import it.ministerodellasalute.verificaC19sdk.util.ConversionUtility
 import it.ministerodellasalute.verificaC19sdk.util.FORMATTED_DATE_LAST_SYNC
 import it.ministerodellasalute.verificaC19sdk.util.TimeUtility.parseTo
@@ -83,10 +76,6 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
     private lateinit var shared: SharedPreferences
 
     private val viewModel by viewModels<FirstViewModel>()
-
-    private lateinit var sharedPreference: SharedPreferences
-
-    private lateinit var verificationViewModel: VerificationViewModel
 
     private val whiteLabelApplication = WhiteLabelApplication()
 
@@ -111,12 +100,12 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
     private fun observeLiveData() {
         observeSyncStatus()
         observeRetryCount()
-        //observeSizeOverThreshold()
-        //observeInitDownload()
+        observeSizeOverThreshold()
+        observeInitDownload()
         observeScanMode()
-        //doOnDebug {
-        //    observeDebugInfo()
-        //}
+        doOnDebug {
+            observeDebugInfo()
+        }
     }
 
     private fun observeDebugInfo() {
@@ -125,21 +114,21 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         }
     }
 
-//    private fun observeInitDownload() {
-//        viewModel.initDownloadLiveData.observe(this) {
-//            if (it) {
-//                enableInitDownload()
-//            }
-//        }
-//    }
-//
-//    private fun observeSizeOverThreshold() {
-//        viewModel.sizeOverLiveData.observe(this) {
-//            if (it) {
-//                createDownloadAlert()
-//            }
-//        }
-//    }
+    private fun observeInitDownload() {
+        viewModel.initDownloadLiveData.observe(this) {
+            if (it) {
+                enableInitDownload()
+            }
+        }
+    }
+
+    private fun observeSizeOverThreshold() {
+        viewModel.sizeOverLiveData.observe(this) {
+            if (it) {
+                createDownloadAlert()
+            }
+        }
+    }
 
     private fun observeRetryCount() {
         viewModel.maxRetryReached.observe(this) {
@@ -151,7 +140,7 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
 
     private fun observeScanMode() {
         viewModel.scanMode.observe(this, {
-            setScanModeTexts(it)
+            setScanModeButtonText(it)
         })
     }
 
@@ -159,7 +148,6 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         viewModel.fetchStatus.observe(this) {
             if (it) {
                 binding.qrButton.background.alpha = 128
-                binding.dateLastSyncText.text = getString(R.string.loading)
             } else {
                 if (!viewModel.getIsPendingDownload() && viewModel.maxRetryReached.value == false) {
                     viewModel.getDateLastSync().let { date ->
@@ -188,16 +176,6 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
 
         binding.updateProgressBar.max = viewModel.getTotalChunk().toInt()
         updateDownloadedPackagesCount()
-
-        viewModel.getDownloadAvailable().let { isAuthorizedToDownload ->
-
-            if (isAuthorizedToDownload == 0L && !viewModel.getIsPendingDownload())
-                binding.initDownload.visibility = View.VISIBLE
-            else {
-                binding.initDownload.visibility = View.GONE
-            }
-        }
-        Log.i("viewModel.getAuthResume()", viewModel.getResumeAvailable().toString())
 
         viewModel.getResumeAvailable().let {
             if (it != -1L) {
@@ -238,22 +216,13 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://www.dgc.gov.it/web/faq.html"))
             startActivity(browserIntent)
         }
-
-        sharedPreference = getSharedPreferences("dgca.verifier.app.pref", Context.MODE_PRIVATE)
-
-        verificationViewModel = ViewModelProvider(this)[VerificationViewModel::class.java]
-
         binding.initDownload.setOnClickListener {
             if (Utility.isOnline(this)) {
-                prepareForDownload()
-                binding.initDownload.visibility = View.GONE
-                binding.dateLastSyncText.text = getString(R.string.updatingRevokedPass)
-                startSyncData()
+                startDownload()
             } else {
                 createCheckConnectionAlertDialog()
             }
         }
-
         binding.debugButton.setOnClickListener {
             val debugInfoIntent = Intent(this, DebugInfoActivity::class.java)
             debugInfoIntent.putExtra(
@@ -275,22 +244,34 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         }
     }
 
-    private fun setScanModeTexts(currentScanMode: String) {
+    private fun setScanModeButtonText(currentScanMode: String) {
         if (!viewModel.getScanModeFlag()) {
             val s = SpannableStringBuilder()
                 .bold { append(getString(R.string.label_choose_scan_mode)) }
             binding.scanModeButton.text = s
         } else {
             var chosenScanMode =
-                if (currentScanMode == "3G") getString(R.string.scan_mode_3G_header) else getString(
-                    R.string.scan_mode_2G_header
-                )
+                when (currentScanMode) {
+                    ScanMode.STANDARD -> getString(R.string.scan_mode_3G_header)
+                    ScanMode.STRENGTHENED -> getString(
+                        R.string.scan_mode_2G_header
+                    )
+                    ScanMode.BOOSTER -> getString(R.string.title_scan_mode_booster)
+                    else -> getString(R.string.scan_mode_3G_header)
+                }
             chosenScanMode += "\n"
-            val chosenScanModeText =
-                if (currentScanMode == "3G") getString(R.string.scan_mode_3G) else getString(R.string.scan_mode_2G)
+            val chosenModeDescription =
+                when (currentScanMode) {
+                    ScanMode.STANDARD -> getString(R.string.scan_mode_3G)
+                    ScanMode.STRENGTHENED -> getString(
+                        R.string.scan_mode_2G
+                    )
+                    ScanMode.BOOSTER -> getString(R.string.label_scan_mode_boost)
+                    else -> getString(R.string.scan_mode_3G)
+                }
             val s = SpannableStringBuilder()
                 .bold { append(chosenScanMode) }
-                .append(chosenScanModeText)
+                .append(chosenModeDescription)
             binding.scanModeButton.text = s
         }
     }
@@ -333,10 +314,10 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
             val builder = AlertDialog.Builder(this)
             builder.setTitle(getString(R.string.privacyTitle))
             builder.setMessage(getString(R.string.privacy))
-            builder.setPositiveButton(getString(R.string.next)) { dialog, which ->
+            builder.setPositiveButton(getString(R.string.next)) { _, _ ->
                 requestPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
-            builder.setNegativeButton(getString(R.string.back)) { dialog, which ->
+            builder.setNegativeButton(getString(R.string.back)) { _, _ ->
             }
             val dialog = builder.create()
             dialog.show()
@@ -355,13 +336,16 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
                     ConversionUtility.byteToMegaByte(viewModel.getTotalSizeInByte().toFloat())
                 )
             )
-            builder.setMessage(getString(R.string.messageDownloadAlert))
+            builder.setMessage(
+                getString(
+                    R.string.messageDownloadAlert,
+                    ConversionUtility.byteToMegaByte(viewModel.getTotalSizeInByte().toFloat())
+                )
+            )
             builder.setPositiveButton(getString(R.string.label_download)) { _, _ ->
                 dialog?.dismiss()
                 if (Utility.isOnline(this)) {
-                    prepareForDownload()
-                    binding.dateLastSyncText.text = getString(R.string.updatingRevokedPass)
-                    startSyncData()
+                    startDownload()
                 } else {
                     createCheckConnectionAlertDialog()
                     enableInitDownload()
@@ -411,21 +395,11 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
 
     override fun onResume() {
         super.onResume()
-        if (!sharedPreference.getBoolean("scan_mode_flag", false)) {
-            val s = SpannableStringBuilder()
-                .bold { append(getString(R.string.label_choose_scan_mode)) }
-            binding.scanModeButton.text = s
-        } else {
-            var chosenScanMode =
-                if (sharedPreference.getString("scan_mode", "3G") == "3G") getString(R.string.scan_mode_3G_header) else getString(R.string.scan_mode_2G_header)
-            chosenScanMode += "\n"
-            val chosenScanModeText =
-                if (sharedPreference.getString("scan_mode", "3G") == "3G") getString(R.string.scan_mode_3G) else getString(R.string.scan_mode_2G)
-            val s = SpannableStringBuilder()
-                .bold { append(chosenScanMode) }
-                .append(chosenScanModeText)
-            binding.scanModeButton.text = s
-        }
+        setScanModeButtonText(viewModel.getScanMode()!!)
+        checkAppMinimumVersion()
+    }
+
+    private fun checkAppMinimumVersion() {
         viewModel.getAppMinVersion().let {
             if (Utility.versionCompare(
                     it,
@@ -448,6 +422,7 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
     }
 
     override fun onClick(v: View?) {
+
         if (v?.id == R.id.qrButton) {
             viewModel.getDateLastSync().let {
                 if (!viewModel.getScanModeFlag() && v.id != R.id.scan_mode_button) {
@@ -458,18 +433,17 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
                     return
                 }
             }
-        }
-
-        viewModel.getDrlDateLastSync().let {
-            if (viewModel.getIsDrlSyncActive() && it == -1L) {
-                createNoSyncAlertDialog(getString(R.string.messageDownloadStarted))
-                return
-            } else if (viewModel.getIsDrlSyncActive() && System.currentTimeMillis() >= it + 24 * 60 * 60 * 1000) {
-                createNoSyncAlertDialog(getString(R.string.noKeyAlertMessageForDrl))
-                return
-            } else if (!viewModel.getScanModeFlag() && v?.id != R.id.scan_mode_button) {
-                createNoScanModeChosenAlert()
-                return
+            viewModel.getDrlDateLastSync().let {
+                if (binding.resumeDownload.isVisible) {
+                    createNoSyncAlertDialog(getString(R.string.label_drl_download_in_progress))
+                    return
+                }
+                if ((viewModel.getIsDrlSyncActive() && System.currentTimeMillis() >= it + 24 * 60 * 60 * 1000) ||
+                    (viewModel.getIsDrlSyncActive() && it == -1L)
+                ) {
+                    createNoSyncAlertDialog(getString(R.string.noKeyAlertMessageForDrl))
+                    return
+                }
             }
         }
         when (v?.id) {
@@ -481,8 +455,21 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
 
     private fun showScanModeChoiceAlertDialog() {
         val mBuilder = AlertDialog.Builder(this)
-        val chosenScanMode = if (viewModel.getScanMode() == "3G") 1 else 0
-        val scanModeChoices =  arrayOf(
+        val chosenScanMode = when (viewModel.getScanMode()) {
+            ScanMode.STANDARD -> 0
+            ScanMode.STRENGTHENED -> 1
+            ScanMode.BOOSTER -> 2
+            else -> 0
+        }
+        val scanModeChoices = arrayOf(
+            getString(
+                R.string.label_alert_dialog_option,
+                getString(R.string.scan_mode_3G_header).substringAfter(' ').toUpperCase(
+                    Locale.ROOT
+                ),
+                getString(R.string.scan_mode_3G)
+
+            ),
             getString(
                 R.string.label_alert_dialog_option,
                 getString(R.string.scan_mode_2G_header).substringAfter(
@@ -493,10 +480,10 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
             ),
             getString(
                 R.string.label_alert_dialog_option,
-                getString(R.string.scan_mode_3G_header).substringAfter(' ').toUpperCase(
+                getString(R.string.title_scan_mode_booster).substringAfter(' ').toUpperCase(
                     Locale.ROOT
                 ),
-                getString(R.string.scan_mode_3G)
+                getString(R.string.label_scan_mode_boost)
 
             )
         )
@@ -504,10 +491,10 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         mBuilder.setTitle(getString(R.string.label_scan_mode))
         mBuilder.setSingleChoiceItems(scanModeChoices, chosenScanMode) { dialog, which ->
             if (!viewModel.getScanModeFlag()) viewModel.setScanModeFlag(true)
-            if (which == 0) {
-                viewModel.setScanMode("2G")
-            } else if (which == 1) {
-                viewModel.setScanMode("3G")
+            when (which) {
+                0 -> viewModel.setScanMode(ScanMode.STANDARD)
+                1 -> viewModel.setScanMode(ScanMode.STRENGTHENED)
+                2 -> viewModel.setScanMode(ScanMode.BOOSTER)
             }
             dialog.dismiss()
         }
@@ -527,15 +514,15 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         }
         val dialog = builder.create()
         dialog.show()
-        dialog.findViewById<TextView>(android.R.id.message)?.movementMethod =
-            LinkMovementMethod.getInstance()
+        val alertMessage = dialog.findViewById<TextView>(android.R.id.message) as TextView
+        alertMessage.movementMethod = LinkMovementMethod.getInstance()
     }
 
     private fun createNoSyncAlertDialog(alertMessage: String) {
         val builder = AlertDialog.Builder(this)
         builder.setTitle(getString(R.string.noKeyAlertTitle))
-        builder.setMessage(getString(R.string.noKeyAlertMessage))
-        builder.setPositiveButton(getString(R.string.ok)) { dialog, which ->
+        builder.setMessage(alertMessage)
+        builder.setPositiveButton(getString(R.string.ok)) { _, _ ->
         }
         val dialog = builder.create()
         dialog.show()
@@ -546,7 +533,7 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
         builder.setTitle(getString(R.string.updateTitle))
         builder.setMessage(getString(R.string.updateMessage))
 
-        builder.setPositiveButton(getString(R.string.updateLabel)) { dialog, which ->
+        builder.setPositiveButton(getString(R.string.updateLabel)) { _, _ ->
             openGooglePlay()
         }
         val dialog = builder.create()
@@ -594,12 +581,6 @@ class FirstActivity : AppCompatActivity(), View.OnClickListener,
                     if (viewModel.getResumeAvailable() == 0L) {
                         binding.resumeDownload.show()
                         binding.qrButton.background.alpha = 128
-                    }
-                }
-                PrefKeys.KEY_SIZE_OVER_THRESHOLD -> {
-                    val isSizeOverThreshold = viewModel.getIsSizeOverThreshold()
-                    if (isSizeOverThreshold) {
-                        createDownloadAlert()
                     }
                 }
                 PrefKeys.KEY_DRL_DATE_LAST_FETCH -> {
